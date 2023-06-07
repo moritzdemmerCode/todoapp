@@ -1,20 +1,51 @@
 import connectToDatabase from '../../lib/db';
 
+async function updateTodoOrder(todoOrderCollection, status, order) {
+    await todoOrderCollection.updateOne({ status }, { $set: { order } });
+}
+
 export default async function handler(req, res) {
     const { method } = req;
     const dbConnection = await connectToDatabase();
     const db = dbConnection.db;
     const todosCollection = db.collection('todos');
+    const todoOrderCollection = db.collection('todo_order');
+    async function createInitialTodoOrder(todoOrderCollection) {
+        const initialStatusOrder = [
+            { status: 'Todo', order: [] },
+            { status: 'In Progress', order: [] },
+            { status: 'Done', order: [] },
+        ];
 
+        for (const statusOrder of initialStatusOrder) {
+            const existingOrder = await todoOrderCollection.findOne({ status: statusOrder.status });
+            if (!existingOrder) {
+                await todoOrderCollection.insertOne(statusOrder);
+            }
+        }
+    }
     switch (method) {
         case 'GET':
             const todos = await todosCollection.find({}).toArray();
-            res.status(200).json(todos);
+            const todoOrder = await todoOrderCollection.find({}).toArray();
+            const sortedTodos = [];
+
+            for (const orderItem of todoOrder) {
+                const orderedTodos = orderItem.order.map(id => todos.find(todo => todo.id === id));
+                sortedTodos.push(...orderedTodos);
+            }
+
+            res.status(200).json(sortedTodos);
             break;
 
         case 'POST':
+            const todosCount = await todosCollection.countDocuments();
+            if (todosCount === 0) {
+                await createInitialTodoOrder(todoOrderCollection);
+            }
             const newTodo = req.body;
-            await todosCollection.insertOne(newTodo);
+            const result = await todosCollection.insertOne(newTodo);
+
             res.status(201).json(newTodo);
             break;
 

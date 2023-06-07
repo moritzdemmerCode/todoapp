@@ -27,10 +27,25 @@ const Home = ({initialTodos}) => {
     } = useTodoColumns(initialColumns);
 
     useEffect(() => {
+        updateTodoOrderInDatabase(columns);
+    }, [columns]);
+
+    useEffect(() => {
         initialTodos.forEach((todo) => {
             addTodoToColumn(todo.id, todo.status);
         });
     }, []);
+
+    const updateTodoOrderInDatabase = async (columns) => {
+        const response = await fetch('/api/todo_order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ columns }),
+        });
+        if (!response.ok) {
+            console.error('Failed to update todo_order in database');
+        }
+    };
     const handleBeginEditingTodo = (todo) => {
         setIsEditTodoFormOpen(true);
         setTodoBeingEdited(todo);
@@ -49,9 +64,8 @@ const Home = ({initialTodos}) => {
             setSnackbarMessage('');
         }, 3000);
     };
-    const updateTodoOrder = async (todoId, newOrder) => {
-
-        const updatedTodo = { ...todos.find(todo => todo.id === todoId), order: newOrder };
+    const updateTodoStatusAndOrder = async (todoId, newStatus) => {
+        const updatedTodo = { ...todos.find(todo => todo.id === todoId), status: newStatus };
         await fetch('/api/todos', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
@@ -68,7 +82,7 @@ const Home = ({initialTodos}) => {
 
         if (sourceColumnId === destinationColumnId) {
             moveTodoWithinColumn(result.draggableId, sourceColumnId, result.destination.index);
-            await updateTodoOrder(result.draggableId, result.destination.index);
+            await updateTodoStatusAndOrder(result.draggableId, sourceColumnId, result.destination.index);
         } else {
             moveTodoToAnotherColumn(result.draggableId, sourceColumnId, destinationColumnId, result.destination.index);
             setTodos(prevTodos => {
@@ -76,13 +90,13 @@ const Home = ({initialTodos}) => {
                 const todoIndex = updatedTodos.findIndex(todo => todo.id === result.draggableId);
                 if (todoIndex > -1) {
                     updatedTodos[todoIndex].status = destinationColumnId;
-                    updatedTodos[todoIndex].order = result.destination.index;
                 }
                 return updatedTodos;
             });
-            await updateTodoOrder(result.draggableId, result.destination.index);
+            await updateTodoStatusAndOrder(result.draggableId, destinationColumnId, result.destination.index);
         }
     };
+
     const handleRemoveTodo = async (todoId, columnId) => {
         await fetch(`/api/todos?todoId=${todoId}`, {
             method: 'DELETE',
@@ -96,12 +110,10 @@ const Home = ({initialTodos}) => {
     };
 
     const handleAddTodo = async (newTodo) => {
-        const order = columns['Todo'].length;
-        const todoWithOrder = { ...newTodo, order };
         const response = await fetch('/api/todos', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(todoWithOrder),
+            body: JSON.stringify(newTodo),
         });
         const createdTodo = await response.json();
         setTodos([...todos, createdTodo]);
@@ -118,7 +130,7 @@ const Home = ({initialTodos}) => {
             <Header />
             <button
                 onClick={() => setIsAddTodoFormOpen(true)}
-                className="hover:bg-blue-700 fixed right-4 bottom-4 bg-blue-500 text-white p-4 rounded-full shadow-lg"
+                className="hover:bg-blue-700 fixed right-8 bottom-8 bg-blue-500 text-white p-5 rounded-full shadow-lg"
             >
                 +
             </button>
@@ -174,10 +186,10 @@ export async function getServerSideProps() {
         headers: {'Content-Type': 'application/json'}
     });
     const todos = await response.json();
-    const sortedTodos = todos.sort((a, b) => a.order - b.order);
+
     return {
         props: {
-            initialTodos: sortedTodos,
+            initialTodos: todos,
         },
     };
 }
